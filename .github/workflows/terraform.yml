@@ -1,0 +1,49 @@
+name: Terraform Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Instalar AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Criar o bucket S3
+        run: |
+          aws s3api create-bucket --bucket ${{ vars.TF_MAIN_BUCKET_NAME }} --region ${{ vars.AWS_REGION }} --create-bucket-configuration LocationConstraint=${{ vars.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        run: |
+          export TF_LOG=DEBUG
+          echo "Bucket Name: ${{ vars.TF_MAIN_BUCKET_NAME }}"
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_MAIN_BUCKET_NAME }}" \
+            -backend-config="key=network/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
